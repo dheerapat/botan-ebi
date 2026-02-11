@@ -15,6 +15,7 @@ export class Kernel {
   private agents: Map<string, IAgentAdapter> = new Map();
 
   private queue: QueueManager;
+  private isShuttingDown: boolean = false;
 
   constructor() {
     this.queue = new QueueManager();
@@ -124,6 +125,9 @@ export class Kernel {
   }
 
   async shutdown() {
+    if (this.isShuttingDown) return;
+    this.isShuttingDown = true;
+
     console.log("🛑 Shutting down...");
 
     for (const [name, adapter] of this.inputs) {
@@ -142,5 +146,6 @@ export class Kernel {
     }
 
     console.log("✅ Shutdown complete");
+    process.exit(0);
   }
 }
