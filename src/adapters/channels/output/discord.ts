@@ -1,5 +1,8 @@
 import { Client } from "discord.js";
-import type { IOutputAdapter, ResponsePacket } from "../../interfaces/adapter";
+import type {
+  IOutputAdapter,
+  ResponsePacket,
+} from "../../../interfaces/adapter";
 
 export class DiscordOutputAdapter implements IOutputAdapter {
   name = "discord";

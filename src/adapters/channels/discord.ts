@@ -4,8 +4,8 @@ import type {
   MessagePacket,
   ResponsePacket,
 } from "../../interfaces/adapter";
-import { DiscordInputAdapter } from "./discord-input";
-import { DiscordOutputAdapter } from "./discord-output";
+import { DiscordInputAdapter } from "./input/discord";
+import { DiscordOutputAdapter } from "./output/discord";
 
 export default class DiscordAdapter implements IInputAdapter, IOutputAdapter {
   name = "discord";
@@ -14,7 +14,9 @@ export default class DiscordAdapter implements IInputAdapter, IOutputAdapter {
 
   constructor() {
     this.inputAdapter = new DiscordInputAdapter();
-    this.outputAdapter = new DiscordOutputAdapter(this.inputAdapter.getClient());
+    this.outputAdapter = new DiscordOutputAdapter(
+      this.inputAdapter.getClient(),
+    );
   }
 
   async start(): Promise<void> {

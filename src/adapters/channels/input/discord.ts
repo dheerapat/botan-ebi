@@ -1,5 +1,5 @@
 import { Client, Events, GatewayIntentBits, Partials } from "discord.js";
-import type { IInputAdapter, MessagePacket } from "../../interfaces/adapter";
+import type { IInputAdapter, MessagePacket } from "../../../interfaces/adapter";
 
 export class DiscordInputAdapter implements IInputAdapter {
   name = "discord";
