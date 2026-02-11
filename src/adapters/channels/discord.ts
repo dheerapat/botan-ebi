@@ -1,4 +1,4 @@
-import { Client, GatewayIntentBits, Partials } from "discord.js";
+import { Client, Events, GatewayIntentBits, Partials } from "discord.js";
 import type {
   IInputAdapter,
   IOutputAdapter,
@@ -15,19 +15,20 @@ export default class DiscordAdapter implements IInputAdapter, IOutputAdapter {
   constructor() {
     this.client = new Client({
       intents: [
+        GatewayIntentBits.Guilds,
         GatewayIntentBits.DirectMessages,
         GatewayIntentBits.MessageContent,
       ],
-      partials: [Partials.Channel],
+      partials: [Partials.Channel, Partials.Message],
     });
   }
 
   async start() {
-    this.client.on("ready", () =>
+    this.client.on(Events.ClientReady, () =>
       console.log(`Logged in as ${this.client.user?.tag}`),
     );
 
-    this.client.on("messageCreate", async (msg) => {
+    this.client.on(Events.MessageCreate, async (msg) => {
       if (msg.author.bot) return;
 
       // Map Discord message to Generic Packet
