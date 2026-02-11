@@ -48,9 +48,17 @@ export class Kernel {
 
   // The main loop: Pick up message -> Send to Agent -> Send to Output
   private startProcessingLoop() {
-    setInterval(async () => {
+    this.startIncomingLoop();
+    this.startOutgoingLoop();
+  }
+
+  private async startIncomingLoop() {
+    const processNext = async () => {
       const queuedItem = await this.queue.dequeue<MessagePacket>("incoming");
-      if (!queuedItem) return;
+      if (!queuedItem) {
+        setTimeout(processNext, 1000);
+        return;
+      }
 
       const msg = queuedItem.data;
       const agent = this.agents.get("opencode");
@@ -58,6 +66,7 @@ export class Kernel {
       if (!agent) {
         console.error("No agent available!");
         await this.queue.complete("incoming", queuedItem.id);
+        processNext();
         return;
       }
 
@@ -82,12 +91,20 @@ export class Kernel {
         console.error("Agent processing failed:", err);
         await this.queue.complete("incoming", queuedItem.id);
       }
-    }, 1000);
 
-    // Separate loop for dispatching responses
-    setInterval(async () => {
+      processNext();
+    };
+
+    processNext();
+  }
+
+  private async startOutgoingLoop() {
+    const processNext = async () => {
       const queuedItem = await this.queue.dequeue<ResponsePacket>("outgoing");
-      if (!queuedItem) return;
+      if (!queuedItem) {
+        setTimeout(processNext, 1000);
+        return;
+      }
 
       const response = queuedItem.data;
       const outputAdapter = this.outputs.get(response.source);
@@ -99,7 +116,11 @@ export class Kernel {
         console.warn(`No output adapter found for source: ${response.source}`);
         await this.queue.complete("outgoing", queuedItem.id);
       }
-    }, 1000);
+
+      processNext();
+    };
+
+    processNext();
   }
 
   async shutdown() {
