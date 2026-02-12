@@ -6,8 +6,6 @@ import type {
   IAgentAdapter,
 } from "../interfaces/adapter";
 import { QueueManager } from "./queue-manager";
-import { DiscordInputAdapter, DiscordOutputAdapter } from "../adapters/channels/discord";
-import OpencodeAgent from "../adapters/agents/opencode/opencode";
 
 export class Kernel {
   private inputs: Map<string, IInputAdapter> = new Map();
@@ -17,31 +15,45 @@ export class Kernel {
   private queue: QueueManager;
   private isShuttingDown: boolean = false;
 
-  constructor() {
+  constructor(
+    inputAdapters: IInputAdapter[],
+    outputAdapters: IOutputAdapter[],
+    agentAdapters: IAgentAdapter[],
+  ) {
     this.queue = new QueueManager();
+    this.inputs = new Map(
+      inputAdapters.map((adapter) => [adapter.name, adapter]),
+    );
+    this.outputs = new Map(
+      outputAdapters.map((adapter) => [adapter.name, adapter]),
+    );
+    this.agents = new Map(
+      agentAdapters.map((adapter) => [adapter.name, adapter]),
+    );
   }
 
-  async bootstrap() {
+  async bootstrap(
+    inputChannelName: string,
+    outputChannelName: string,
+    agentName: string,
+  ) {
     console.log("🚀 Bootstrapping Lobster Kernel...");
+    const inputAdapter = this.inputs.get(inputChannelName);
+    const outputAdapter = this.outputs.get(outputChannelName);
+    const agent = this.agents.get(agentName);
 
-    const discordInputAdapter = new DiscordInputAdapter();
-    const discordOutputAdapter = new DiscordOutputAdapter(discordInputAdapter.getClient());
-    const opencodeAgent = new OpencodeAgent();
+    inputAdapter!.onMessage((msg: MessagePacket) =>
+      this.handleIncomingMessage(msg),
+    );
 
-    this.inputs.set(discordInputAdapter.name, discordInputAdapter);
-    this.outputs.set(discordOutputAdapter.name, discordOutputAdapter);
-    this.agents.set(opencodeAgent.name, opencodeAgent);
+    await inputAdapter!.start();
+    await outputAdapter!.start();
+    await agent!.start();
 
-    discordInputAdapter.onMessage((msg: MessagePacket) => this.handleIncomingMessage(msg));
+    console.log("✅ Adapter Started");
+    console.log("✅ Agent Loaded");
 
-    await discordInputAdapter.start();
-    await discordOutputAdapter.start();
-    await opencodeAgent.start();
-
-    console.log("✅ Discord Adapter Started");
-    console.log("✅ Opencode Agent Loaded");
-
-    this.startProcessingLoop();
+    this.startProcessingLoop(agentName);
   }
 
   // When a message comes from Discord/WhatsApp
@@ -50,12 +62,12 @@ export class Kernel {
   }
 
   // The main loop: Pick up message -> Send to Agent -> Send to Output
-  private startProcessingLoop() {
-    this.startIncomingLoop();
+  private startProcessingLoop(agentName: string) {
+    this.startIncomingLoop(agentName);
     this.startOutgoingLoop();
   }
 
-  private async startIncomingLoop() {
+  private async startIncomingLoop(agentName: string) {
     const processNext = async () => {
       const queuedItem = await this.queue.dequeue<MessagePacket>("incoming");
       if (!queuedItem) {
@@ -64,7 +76,7 @@ export class Kernel {
       }
 
       const msg = queuedItem.data;
-      const agent = this.agents.get("opencode");
+      const agent = this.agents.get(agentName);
 
       if (!agent) {
         console.error("No agent available!");
