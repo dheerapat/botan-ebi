@@ -1,6 +1,8 @@
 # Lobster 
 
-Discord bot powered by opencode AI agent.
+Bot powered by opencode AI agent.
+
+> This project is heavily influenced by [tinyclaw](https://github.com/jlia0/tinyclaw)
 
 ## Features
 
