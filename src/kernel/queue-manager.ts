@@ -10,21 +10,35 @@ interface QueuedItem<T> {
 export class QueueManager {
   private basePath: string;
   private queues: Set<string> = new Set();
+  private queueDepths: Map<string, number> = new Map();
 
   constructor(basePath: string = ".lobster/queues") {
     this.basePath = basePath;
   }
 
-  /**
-   * Initialize directories for all registered queue names
-   */
+  getQueueDepth(queueName: string): number {
+    return this.queueDepths.get(queueName) || 0;
+  }
+
+  async refreshQueueDepth(queueName: string): Promise<void> {
+    await this.registerQueue(queueName);
+    const queueDir = path.join(this.basePath, queueName);
+    try {
+      const files = await fs.readdir(queueDir);
+      const jsonCount = files.filter((f) => f.endsWith(".json")).length;
+      this.queueDepths.set(queueName, jsonCount);
+    } catch (e) {
+      this.queueDepths.set(queueName, 0);
+    }
+  }
+
   async registerQueue(name: string) {
     if (this.queues.has(name)) return;
 
     const dirs = [
-      path.join(this.basePath, name), // Incoming/Pending
-      path.join(this.basePath, `${name}_processing`), // Currently being handled
-      path.join(this.basePath, `${name}_done`), // Completed (optional, for logs)
+      path.join(this.basePath, name),
+      path.join(this.basePath, `${name}_processing`),
+      path.join(this.basePath, `${name}_done`),
     ];
 
     for (const dir of dirs) {
@@ -34,10 +48,6 @@ export class QueueManager {
     this.queues.add(name);
   }
 
-  /**
-   * Add an item to the queue.
-   * Writes a JSON file to the 'pending' directory.
-   */
   async enqueue<T>(queueName: string, data: T): Promise<string> {
     await this.registerQueue(queueName);
 
@@ -53,33 +63,29 @@ export class QueueManager {
 
     await fs.writeFile(filePath, JSON.stringify(item, null, 2));
 
+    const currentDepth = this.queueDepths.get(queueName) || 0;
+    this.queueDepths.set(queueName, currentDepth + 1);
+
     return id;
   }
 
-  /**
-   * Get the next item from the queue.
-   * Moves the file from 'pending' to 'processing' to prevent double-processing.
-   */
   async dequeue<T>(queueName: string): Promise<QueuedItem<T> | null> {
     await this.registerQueue(queueName);
 
     const pendingDir = path.join(this.basePath, queueName);
     const processingDir = path.join(this.basePath, `${queueName}_processing`);
 
-    // 1. List all files in pending
     let files: string[];
     try {
       files = await fs.readdir(pendingDir);
     } catch (e) {
-      return null; // Directory doesn't exist yet
+      return null;
     }
 
-    // Filter for JSON files
     const jsonFiles = files.filter((f) => f.endsWith(".json"));
 
     if (jsonFiles.length === 0) return null;
 
-    // 2. Sort by filename (which contains timestamp) to get oldest first
     jsonFiles.sort();
 
     const oldestFile = jsonFiles[0]!;
@@ -87,12 +93,13 @@ export class QueueManager {
     const targetPath = path.join(processingDir, oldestFile);
 
     try {
-      // 3. Move file atomically (rename)
       await fs.rename(sourcePath, targetPath);
 
-      // 4. Read content
       const content = await fs.readFile(targetPath, "utf-8");
       const item: QueuedItem<T> = JSON.parse(content);
+
+      const currentDepth = this.queueDepths.get(queueName) || 0;
+      this.queueDepths.set(queueName, Math.max(0, currentDepth - 1));
 
       return item;
     } catch (error) {
@@ -101,10 +108,6 @@ export class QueueManager {
     }
   }
 
-  /**
-   * Mark a job as completed.
-   * Moves the file from 'processing' to 'done' (or deletes it).
-   */
   async complete(queueName: string, itemId: string): Promise<void> {
     const processingDir = path.join(this.basePath, `${queueName}_processing`);
     const doneDir = path.join(this.basePath, `${queueName}_done`);
@@ -114,25 +117,16 @@ export class QueueManager {
     const targetPath = path.join(doneDir, fileName);
 
     try {
-      // Move to done folder (for audit trail) or unlink() to delete
-      // Here we move to done to keep a history
       await fs.rename(sourcePath, targetPath);
     } catch (error) {
-      // File might already be gone or moved, ignore
       console.warn(`Could not complete item ${itemId}:`, error);
     }
   }
 
-  /**
-   * Optional: Clear old history to prevent disk fill
-   */
   async cleanup(
     queueName: string,
     olderThanMs: number = 7 * 24 * 60 * 60 * 1000,
   ) {
-    // 7 days
     const doneDir = path.join(this.basePath, `${queueName}_done`);
-    // Implementation: Read files, check mtime, delete if old...
-    // (Left as exercise for brevity)
   }
 }

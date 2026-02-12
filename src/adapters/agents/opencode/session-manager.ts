@@ -8,10 +8,11 @@ interface SessionData {
 export class SessionManager {
   private sessions: Map<string, string> = new Map();
   private sessionsPath: string;
-  private saveScheduled: boolean = false;
+  private tempSessionsPath: string;
 
   constructor(basePath: string = ".lobster") {
     this.sessionsPath = path.join(basePath, "sessions.json");
+    this.tempSessionsPath = path.join(basePath, "sessions.json.tmp");
   }
 
   async load(): Promise<void> {
@@ -20,7 +21,15 @@ export class SessionManager {
       const data: SessionData = JSON.parse(content);
       this.sessions = new Map(Object.entries(data));
     } catch (error) {
-      console.warn("Could not load sessions, starting fresh:", error);
+      const isFileNotFound =
+        error instanceof Error && "code" in error && error.code === "ENOENT";
+
+      if (isFileNotFound) {
+        console.log("💭 No existing sessions found (first run), starting fresh");
+      } else {
+        console.warn("Could not load sessions, starting fresh:", error);
+      }
+
       this.sessions = new Map();
     }
   }
@@ -29,37 +38,43 @@ export class SessionManager {
     const data: SessionData = Object.fromEntries(this.sessions);
     const dir = path.dirname(this.sessionsPath);
     await fs.mkdir(dir, { recursive: true });
-    await fs.writeFile(this.sessionsPath, JSON.stringify(data, null, 2));
-  }
 
-  private scheduleSave(): void {
-    if (this.saveScheduled) return;
-    this.saveScheduled = true;
-    setTimeout(async () => {
-      await this.save();
-      this.saveScheduled = false;
-    }, 1000);
+    const tempPath = this.tempSessionsPath;
+    const targetPath = this.sessionsPath;
+
+    try {
+      await fs.writeFile(tempPath, JSON.stringify(data, null, 2));
+
+      await fs.rename(tempPath, targetPath);
+    } catch (error) {
+      console.error("Failed to save sessions:", error);
+      try {
+        await fs.unlink(tempPath);
+      } catch {
+      }
+      throw error;
+    }
   }
 
   getSessionId(channelId: string): string | undefined {
     return this.sessions.get(channelId);
   }
 
-  setSessionId(channelId: string, sessionId: string): void {
+  async setSessionId(channelId: string, sessionId: string): Promise<void> {
     this.sessions.set(channelId, sessionId);
-    this.scheduleSave();
+    await this.save();
   }
 
-  deleteSession(channelId: string): boolean {
+  async deleteSession(channelId: string): Promise<boolean> {
     const deleted = this.sessions.delete(channelId);
     if (deleted) {
-      this.scheduleSave();
+      await this.save();
     }
     return deleted;
   }
 
-  clearAll(): void {
+  async clearAll(): Promise<void> {
     this.sessions.clear();
-    this.scheduleSave();
+    await this.save();
   }
 }

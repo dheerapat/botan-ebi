@@ -15,7 +15,28 @@ describe("Kernel", () => {
   let testQueuePath: string;
 
   beforeEach(async () => {
-    kernel = new Kernel();
+    const mockInputAdapter: IInputAdapter = {
+      name: "test-input",
+      start: async () => {},
+      stop: async () => {},
+      onMessage: () => {},
+    };
+
+    const mockOutputAdapter: IOutputAdapter = {
+      name: "test-output",
+      start: async () => {},
+      stop: async () => {},
+      send: async () => {},
+    };
+
+    const mockAgentAdapter: IAgentAdapter = {
+      name: "test-agent",
+      start: async () => {},
+      stop: async () => {},
+      process: async () => "test response",
+    };
+
+    kernel = new Kernel([mockInputAdapter], [mockOutputAdapter], [mockAgentAdapter]);
     testQueuePath = path.join(process.cwd(), ".test-kernel-queues");
     await fs.rm(testQueuePath, { recursive: true, force: true });
   });

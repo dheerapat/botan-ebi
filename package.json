@@ -1,6 +1,6 @@
 {
-  "name": "deus-ex-machina",
-  "module": "index.ts",
+  "name": "lobster",
+  "module": "src/index.ts",
   "type": "module",
   "private": true,
   "devDependencies": {
