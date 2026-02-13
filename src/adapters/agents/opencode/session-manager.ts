@@ -50,7 +50,8 @@ export class SessionManager {
       console.error("Failed to save sessions:", error);
       try {
         await fs.unlink(tempPath);
-      } catch {
+      } catch (unlinkError) {
+        console.warn("Failed to clean up temp file:", unlinkError);
       }
       throw error;
     }
@@ -60,11 +61,20 @@ export class SessionManager {
     return this.sessions.get(channelId);
   }
 
+  /**
+   * Store a session ID for a given channel.
+   * This is an async operation that persists the change to disk.
+   */
   async setSessionId(channelId: string, sessionId: string): Promise<void> {
     this.sessions.set(channelId, sessionId);
     await this.save();
   }
 
+  /**
+   * Delete a session for a given channel.
+   * This is an async operation that persists the change to disk.
+   * @returns true if session was deleted, false if it didn't exist
+   */
   async deleteSession(channelId: string): Promise<boolean> {
     const deleted = this.sessions.delete(channelId);
     if (deleted) {
@@ -73,6 +83,10 @@ export class SessionManager {
     return deleted;
   }
 
+  /**
+   * Clear all sessions from memory and disk.
+   * This is an async operation that persists the change to disk.
+   */
   async clearAll(): Promise<void> {
     this.sessions.clear();
     await this.save();

@@ -6,6 +6,7 @@ import { RateLimiter } from "../../../utils/rate-limiter";
 export interface DiscordInputConfig {
   maxMessageLength: number;
   rateLimitPerMinute: number;
+  cleanupIntervalMs?: number;
 }
 
 export class DiscordInputAdapter implements IInputAdapter {
@@ -28,6 +29,7 @@ export class DiscordInputAdapter implements IInputAdapter {
     this.config = {
       maxMessageLength: config?.maxMessageLength || 10000,
       rateLimitPerMinute: config?.rateLimitPerMinute || 10,
+      cleanupIntervalMs: config?.cleanupIntervalMs || 60000,
     };
     this.rateLimiter = new RateLimiter({
       maxRequestsPerMinute: this.config.rateLimitPerMinute,
@@ -85,7 +87,7 @@ export class DiscordInputAdapter implements IInputAdapter {
 
     this.cleanupInterval = setInterval(() => {
       this.rateLimiter.cleanup();
-    }, 60000);
+    }, this.config.cleanupIntervalMs);
   }
 
   async stop() {
