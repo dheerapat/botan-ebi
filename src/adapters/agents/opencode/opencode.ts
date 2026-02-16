@@ -1,6 +1,7 @@
 import type { IAgentAdapter, MessagePacket } from "../../../interfaces/adapter";
 import { createOpencodeClient } from "@opencode-ai/sdk";
 import { SessionManager } from "./session-manager";
+import { retryWithBackoff } from "../../../utils/retry";
 
 export default class OpencodeAgent implements IAgentAdapter {
   name = "opencode";
@@ -50,7 +51,7 @@ export default class OpencodeAgent implements IAgentAdapter {
         `OpencodeAgent error for channel ${channelId}:`,
         errorMessage,
       );
-      return `I encountered an error: ${errorMessage}. Please check if the opencode server is running.`;
+      return `I encountered an error: ${errorMessage}. Please try again later.`;
     }
   }
 
@@ -59,13 +60,24 @@ export default class OpencodeAgent implements IAgentAdapter {
 
     if (sessionId) {
       try {
-        await this.client.session.delete({ path: { id: sessionId } });
-        this.sessionManager.deleteSession(channelId);
+        await retryWithBackoff(
+          () =>
+            this.client.session.delete({
+              path: { id: sessionId },
+            }),
+          {
+            maxAttempts: 3,
+            initialDelayMs: 1000,
+            maxDelayMs: 30000,
+            backoffMultiplier: 2,
+          },
+        );
+        await this.sessionManager.deleteSession(channelId);
         console.log(`Session reset for channel ${channelId}`);
         return "Session reset! Starting a fresh conversation.";
       } catch (error) {
         console.error(`Failed to delete session ${sessionId}:`, error);
-        this.sessionManager.deleteSession(channelId);
+        await this.sessionManager.deleteSession(channelId);
         return "Session reset (local cache cleared). Starting fresh.";
       }
     }
@@ -78,14 +90,23 @@ export default class OpencodeAgent implements IAgentAdapter {
 
     if (!sessionId) {
       console.log(`Creating new session for channel ${channelId}`);
-      const session = await this.client.session.create({
-        body: { title: `Discord Channel: ${channelId}` },
-      });
+      const session = await retryWithBackoff(
+        () =>
+          this.client.session.create({
+            body: { title: `Discord Channel: ${channelId}` },
+          }),
+        {
+          maxAttempts: 3,
+          initialDelayMs: 1000,
+          maxDelayMs: 30000,
+          backoffMultiplier: 2,
+        },
+      );
       if (!session.data) {
         throw new Error("Failed to create session: no data returned");
       }
       sessionId = session.data.id;
-      this.sessionManager.setSessionId(channelId, sessionId);
+      await this.sessionManager.setSessionId(channelId, sessionId);
     }
 
     return sessionId;
@@ -106,10 +127,19 @@ export default class OpencodeAgent implements IAgentAdapter {
       };
     }
 
-    const result = await this.client.session.prompt({
-      path: { id: sessionId },
-      body,
-    });
+    const result = await retryWithBackoff(
+      () =>
+        this.client.session.prompt({
+          path: { id: sessionId },
+          body,
+        }),
+      {
+        maxAttempts: 3,
+        initialDelayMs: 1000,
+        maxDelayMs: 30000,
+        backoffMultiplier: 2,
+      },
+    );
 
     if (!result.data) {
       return "[No response received from opencode]";

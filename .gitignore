@@ -31,4 +31,5 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 
 # Session persistence
 .lobster/sessions.json
+.lobster/sessions.json.tmp
 .lobster/queues/*

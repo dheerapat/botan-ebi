@@ -29,8 +29,18 @@ DISCORD_TOKEN=your_discord_bot_token_here
 OPENCODE_BASE_URL=http://localhost:4096
 
 # Optional: Override model
-# OPENCODE_PROVIDER_ID
-# OPENCODE_MODEL_ID
+# OPENCODE_PROVIDER_ID=zai-coding-plan
+# OPENCODE_MODEL_ID=glm-4.7
+
+# Optional: Production settings
+# Maximum message length in characters (default: 10000)
+MAX_MESSAGE_LENGTH=10000
+
+# Maximum queue depth before backpressure kicks in (default: 50)
+MAX_QUEUE_DEPTH=50
+
+# Rate limit per channel per minute (default: 10)
+RATE_LIMIT_PER_MINUTE=10
 ```
 
 ## Usage

@@ -149,4 +149,65 @@ describe("QueueManager", () => {
       expect((await fs.readdir(doneDir)).length).toBe(1);
     });
   });
+
+  describe("getQueueDepth", () => {
+    it("should return 0 for new empty queue", async () => {
+      const depth = queueManager.getQueueDepth("new-queue");
+      expect(depth).toBe(0);
+    });
+
+    it("should count existing files on disk after registration", async () => {
+      const queueDir = path.join(testBasePath, "existing-queue");
+      await fs.mkdir(queueDir, { recursive: true });
+
+      const file1 = path.join(queueDir, "msg1.json");
+      const file2 = path.join(queueDir, "msg2.json");
+      await fs.writeFile(file1, '{"test":1}');
+      await fs.writeFile(file2, '{"test":2}');
+
+      const newQueueManager = new QueueManager(testBasePath);
+      await newQueueManager.registerQueue("existing-queue");
+      const depth = newQueueManager.getQueueDepth("existing-queue");
+      expect(depth).toBe(2);
+    });
+
+    it("should track depth incrementally during enqueue", async () => {
+      await queueManager.enqueue("depth-queue", { data: "1" });
+      expect(queueManager.getQueueDepth("depth-queue")).toBe(1);
+
+      await queueManager.enqueue("depth-queue", { data: "2" });
+      expect(queueManager.getQueueDepth("depth-queue")).toBe(2);
+
+      await queueManager.enqueue("depth-queue", { data: "3" });
+      expect(queueManager.getQueueDepth("depth-queue")).toBe(3);
+    });
+
+    it("should decrement depth during dequeue", async () => {
+      await queueManager.enqueue("dequeue-queue", { data: "1" });
+      await queueManager.enqueue("dequeue-queue", { data: "2" });
+
+      expect(queueManager.getQueueDepth("dequeue-queue")).toBe(2);
+
+      await queueManager.dequeue("dequeue-queue");
+      expect(queueManager.getQueueDepth("dequeue-queue")).toBe(1);
+
+      await queueManager.dequeue("dequeue-queue");
+      expect(queueManager.getQueueDepth("dequeue-queue")).toBe(0);
+    });
+
+    it("should ignore non-JSON files in count", async () => {
+      const queueDir = path.join(testBasePath, "mixed-queue");
+      await fs.mkdir(queueDir, { recursive: true });
+
+      await fs.writeFile(path.join(queueDir, "msg1.json"), '{"test":1}');
+      await fs.writeFile(path.join(queueDir, "msg2.json"), '{"test":2}');
+      await fs.writeFile(path.join(queueDir, "readme.txt"), 'text file');
+      await fs.writeFile(path.join(queueDir, ".gitkeep"), '');
+
+      const newQueueManager = new QueueManager(testBasePath);
+      await newQueueManager.registerQueue("mixed-queue");
+      const depth = newQueueManager.getQueueDepth("mixed-queue");
+      expect(depth).toBe(2);
+    });
+  });
 });

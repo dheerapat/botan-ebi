@@ -14,11 +14,16 @@ export class Kernel {
 
   private queue: QueueManager;
   private isShuttingDown: boolean = false;
+  private maxQueueDepth: number;
+  private activeProcessingJobs: Set<string> = new Set();
+  private shutdownTimeout: number;
 
   constructor(
     inputAdapters: IInputAdapter[],
     outputAdapters: IOutputAdapter[],
     agentAdapters: IAgentAdapter[],
+    maxQueueDepth: number = 50,
+    shutdownTimeout: number = 30000,
   ) {
     this.queue = new QueueManager();
     this.inputs = new Map(
@@ -30,6 +35,8 @@ export class Kernel {
     this.agents = new Map(
       agentAdapters.map((adapter) => [adapter.name, adapter]),
     );
+    this.maxQueueDepth = maxQueueDepth;
+    this.shutdownTimeout = shutdownTimeout;
   }
 
   async bootstrap(
@@ -58,6 +65,19 @@ export class Kernel {
 
   // When a message comes from Discord/WhatsApp
   private async handleIncomingMessage(msg: MessagePacket) {
+    if (this.isShuttingDown) {
+      console.warn(`Rejecting message ${msg.id} - system is shutting down`);
+      return;
+    }
+
+    const currentDepth = this.queue.getQueueDepth("incoming");
+    if (currentDepth >= this.maxQueueDepth) {
+      console.warn(
+        `Rejecting message ${msg.id} - queue depth (${currentDepth}) exceeds limit (${this.maxQueueDepth})`,
+      );
+      return;
+    }
+
     await this.queue.enqueue("incoming", msg);
   }
 
@@ -69,6 +89,17 @@ export class Kernel {
 
   private async startIncomingLoop(agentName: string) {
     const processNext = async () => {
+      if (this.isShuttingDown) {
+        const processingCount = this.activeProcessingJobs.size;
+        if (processingCount === 0) {
+          console.log("Incoming loop: no more jobs to process");
+          return;
+        }
+        console.log(`Incoming loop: waiting for ${processingCount} jobs to complete`);
+        setTimeout(processNext, 500);
+        return;
+      }
+
       const queuedItem = await this.queue.dequeue<MessagePacket>("incoming");
       if (!queuedItem) {
         setTimeout(processNext, 1000);
@@ -84,6 +115,8 @@ export class Kernel {
         processNext();
         return;
       }
+
+      this.activeProcessingJobs.add(queuedItem.id);
 
       console.log(
         `[${msg.source}] Processing message ${msg.id} via ${agent.name}...`,
@@ -105,9 +138,13 @@ export class Kernel {
       } catch (err) {
         console.error("Agent processing failed:", err);
         await this.queue.complete("incoming", queuedItem.id);
+      } finally {
+        this.activeProcessingJobs.delete(queuedItem.id);
       }
 
-      processNext();
+      if (!this.isShuttingDown) {
+        processNext();
+      }
     };
 
     processNext();
@@ -115,6 +152,17 @@ export class Kernel {
 
   private async startOutgoingLoop() {
     const processNext = async () => {
+      if (this.isShuttingDown) {
+        const processingCount = this.activeProcessingJobs.size;
+        if (processingCount === 0) {
+          console.log("Outgoing loop: no more jobs to process");
+          return;
+        }
+        console.log(`Outgoing loop: waiting for ${processingCount} jobs to complete`);
+        setTimeout(processNext, 500);
+        return;
+      }
+
       const queuedItem = await this.queue.dequeue<ResponsePacket>("outgoing");
       if (!queuedItem) {
         setTimeout(processNext, 1000);
@@ -124,6 +172,8 @@ export class Kernel {
       const response = queuedItem.data;
       const outputAdapter = this.outputs.get(response.source);
 
+      this.activeProcessingJobs.add(queuedItem.id);
+
       if (outputAdapter) {
         await outputAdapter.send(response);
         await this.queue.complete("outgoing", queuedItem.id);
@@ -132,7 +182,11 @@ export class Kernel {
         await this.queue.complete("outgoing", queuedItem.id);
       }
 
-      processNext();
+      this.activeProcessingJobs.delete(queuedItem.id);
+
+      if (!this.isShuttingDown) {
+        processNext();
+      }
     };
 
     processNext();
@@ -148,6 +202,25 @@ export class Kernel {
       console.log(`Stopping input adapter: ${name}`);
       await adapter.stop();
     }
+
+    const startTime = Date.now();
+
+    while (this.activeProcessingJobs.size > 0) {
+      const elapsed = Date.now() - startTime;
+      if (elapsed >= this.shutdownTimeout) {
+        console.warn(
+          `Shutdown timeout reached with ${this.activeProcessingJobs.size} jobs remaining`,
+        );
+        break;
+      }
+
+      console.log(
+        `Waiting for ${this.activeProcessingJobs.size} active jobs to complete...`,
+      );
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+
+    console.log("✅ All active jobs completed or timeout reached");
 
     for (const [name, adapter] of this.outputs) {
       console.log(`Stopping output adapter: ${name}`);
