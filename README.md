@@ -32,6 +32,7 @@ cp .opencode/opencode.jsonc.example .opencode/opencode.jsonc
 ```
 
 ```bash
+# In botan-ebi directory
 cd botan-ebi
 bun install
 ```
