@@ -95,7 +95,9 @@ export class Kernel {
           console.log("Incoming loop: no more jobs to process");
           return;
         }
-        console.log(`Incoming loop: waiting for ${processingCount} jobs to complete`);
+        console.log(
+          `Incoming loop: waiting for ${processingCount} jobs to complete`,
+        );
         setTimeout(processNext, 500);
         return;
       }
@@ -158,7 +160,9 @@ export class Kernel {
           console.log("Outgoing loop: no more jobs to process");
           return;
         }
-        console.log(`Outgoing loop: waiting for ${processingCount} jobs to complete`);
+        console.log(
+          `Outgoing loop: waiting for ${processingCount} jobs to complete`,
+        );
         setTimeout(processNext, 500);
         return;
       }
@@ -196,7 +200,7 @@ export class Kernel {
     if (this.isShuttingDown) return;
     this.isShuttingDown = true;
 
-    console.log("🛑 Shutting down...");
+    console.log("\n🛑 Shutting down...");
 
     for (const [name, adapter] of this.inputs) {
       console.log(`Stopping input adapter: ${name}`);
