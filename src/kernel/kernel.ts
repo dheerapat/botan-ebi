@@ -44,7 +44,7 @@ export class Kernel {
     outputChannelName: string,
     agentName: string,
   ) {
-    console.log("🚀 Bootstrapping Lobster Kernel...");
+    console.log("🚀 Bootstrapping Botan-ebi Kernel...");
     const inputAdapter = this.inputs.get(inputChannelName);
     const outputAdapter = this.outputs.get(outputChannelName);
     const agent = this.agents.get(agentName);

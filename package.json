@@ -1,5 +1,5 @@
 {
-  "name": "lobster",
+  "name": "botan-ebi",
   "module": "src/index.ts",
   "type": "module",
   "private": true,

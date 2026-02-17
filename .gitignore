@@ -30,6 +30,6 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 .DS_Store
 
 # Session persistence
-.lobster/sessions.json
-.lobster/sessions.json.tmp
-.lobster/queues/*
+.botan-ebi/sessions.json
+.botan-ebi/sessions.json.tmp
+.botan-ebi/queues/*

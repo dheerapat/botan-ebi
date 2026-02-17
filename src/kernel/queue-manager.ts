@@ -12,7 +12,7 @@ export class QueueManager {
   private queues: Set<string> = new Set();
   private queueDepths: Map<string, number> = new Map();
 
-  constructor(basePath: string = ".lobster/queues") {
+  constructor(basePath: string = ".botan-ebi/queues") {
     this.basePath = basePath;
   }
 

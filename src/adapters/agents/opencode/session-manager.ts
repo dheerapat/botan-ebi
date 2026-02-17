@@ -10,7 +10,7 @@ export class SessionManager {
   private sessionsPath: string;
   private tempSessionsPath: string;
 
-  constructor(basePath: string = ".lobster") {
+  constructor(basePath: string = ".botan-ebi") {
     this.sessionsPath = path.join(basePath, "sessions.json");
     this.tempSessionsPath = path.join(basePath, "sessions.json.tmp");
   }
@@ -25,7 +25,9 @@ export class SessionManager {
         error instanceof Error && "code" in error && error.code === "ENOENT";
 
       if (isFileNotFound) {
-        console.log("💭 No existing sessions found (first run), starting fresh");
+        console.log(
+          "💭 No existing sessions found (first run), starting fresh",
+        );
       } else {
         console.warn("Could not load sessions, starting fresh:", error);
       }

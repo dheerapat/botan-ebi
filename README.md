@@ -1,4 +1,4 @@
-# Lobster 
+# Botan-ebi 
 
 Bot powered by opencode AI agent.
 
