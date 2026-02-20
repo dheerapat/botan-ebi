@@ -1,8 +1,8 @@
-import OpencodeAgent from "./adapters/agents/opencode/opencode.js";
-import { DiscordInputAdapter } from "./adapters/channels/input/discord.js";
-import { DiscordOutputAdapter } from "./adapters/channels/output/discord.js";
-import { Kernel } from "./kernel/kernel.js";
-import { validateEnv } from "./config/env.js";
+import OpencodeAgent from "+adapters/agents/opencode/opencode.js";
+import { DiscordInputAdapter } from "+adapters/channels/input/discord.js";
+import { DiscordOutputAdapter } from "+adapters/channels/output/discord.js";
+import { Kernel } from "+kernel/kernel.js";
+import { validateEnv } from "+config/env.js";
 
 let env;
 try {

@@ -3,9 +3,9 @@ import type {
   IOutputAdapter,
   MessagePacket,
   ResponsePacket,
-} from "../../interfaces/adapter";
-import { DiscordInputAdapter } from "./input/discord";
-import { DiscordOutputAdapter } from "./output/discord";
+} from "+interfaces/adapter";
+import { DiscordInputAdapter } from "+adapters/channels/input/discord";
+import { DiscordOutputAdapter } from "+adapters/channels/output/discord";
 
 export default class DiscordAdapter implements IInputAdapter, IOutputAdapter {
   name = "discord";

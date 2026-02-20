@@ -24,6 +24,17 @@
     // Some stricter flags (disabled by default)
     "noUnusedLocals": false,
     "noUnusedParameters": false,
-    "noPropertyAccessFromIndexSignature": false
+    "noPropertyAccessFromIndexSignature": false,
+
+    // Path aliases
+    "baseUrl": ".",
+    "paths": {
+      "+adapters/*": ["./src/adapters/*"],
+      "+config/*": ["./src/config/*"],
+      "+interfaces/*": ["./src/interfaces/*"],
+      "+kernel/*": ["./src/kernel/*"],
+      "+utils/*": ["./src/utils/*"],
+      "+/*": ["./src/*"]
+    }
   }
 }
