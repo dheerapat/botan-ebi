@@ -1,7 +1,7 @@
-import type { IAgentAdapter, MessagePacket } from "../../../interfaces/adapter";
+import type { IAgentAdapter, MessagePacket } from "+interfaces/adapter";
 import { createOpencodeClient } from "@opencode-ai/sdk";
-import { SessionManager } from "./session-manager";
-import { retryWithBackoff } from "../../../utils/retry";
+import { SessionManager } from "+adapters/agents/opencode/session-manager";
+import { retryWithBackoff } from "+utils/retry";
 
 export default class OpencodeAgent implements IAgentAdapter {
   name = "opencode";

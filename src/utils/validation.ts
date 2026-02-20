@@ -1,4 +1,4 @@
-import type { MessagePacket } from "../interfaces/adapter";
+import type { MessagePacket } from "+interfaces/adapter";
 
 export interface ValidationResult {
   valid: boolean;

@@ -4,8 +4,8 @@ import type {
   IInputAdapter,
   IOutputAdapter,
   IAgentAdapter,
-} from "../interfaces/adapter";
-import { QueueManager } from "./queue-manager";
+} from "+interfaces/adapter";
+import { QueueManager } from "+kernel/queue-manager";
 
 export class Kernel {
   private inputs: Map<string, IInputAdapter> = new Map();

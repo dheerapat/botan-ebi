@@ -1,7 +1,7 @@
 import { Client, Events, GatewayIntentBits, Partials } from "discord.js";
-import type { IInputAdapter, MessagePacket } from "../../../interfaces/adapter";
-import { validateMessagePacket } from "../../../utils/validation";
-import { RateLimiter } from "../../../utils/rate-limiter";
+import type { IInputAdapter, MessagePacket } from "+interfaces/adapter";
+import { validateMessagePacket } from "+utils/validation";
+import { RateLimiter } from "+utils/rate-limiter";
 
 export interface DiscordInputConfig {
   maxMessageLength: number;
