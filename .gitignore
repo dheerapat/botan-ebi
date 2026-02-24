@@ -43,3 +43,9 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 opencode-assistant/node_modules
 opencode-assistant/.opencode/memory.jsonl
 opencode-assistant/.opencode/opencode.jsonc
+
+.bot.log
+.bot.pid
+
+.opencode.log
+.opencode.pid
