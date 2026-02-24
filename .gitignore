@@ -33,3 +33,13 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 .botan-ebi/sessions.json
 .botan-ebi/sessions.json.tmp
 .botan-ebi/queues/*
+
+# Process tracking
+.botan-ebi/pids.json
+.botan-ebi/opencode.pid
+.botan-ebi/bot.pid
+
+# Opencode assistant
+opencode-assistant/node_modules
+opencode-assistant/.opencode/memory.jsonl
+opencode-assistant/.opencode/opencode.jsonc

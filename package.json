@@ -15,6 +15,11 @@
   },
   "scripts": {
     "test": "bun test",
-    "start": "bun run src/index.ts"
+    "start": "bun run src/index.ts",
+    "bot:start": "./bootstrap.sh start",
+    "bot:stop": "./bootstrap.sh stop",
+    "bot:restart": "./bootstrap.sh restart",
+    "bot:status": "./bootstrap.sh status",
+    "bot:logs": "./bootstrap.sh logs"
   }
 }
