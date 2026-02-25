@@ -41,19 +41,38 @@ cp .env.example .env
 
 The opencode server is configured in `opencode-assistant/.opencode/opencode.jsonc`.
 
-### MCP Servers Included:
+### MCP Servers Included
+
 - **graph-memory**: Persistent memory for user preferences and context
 - **brave-search**: Web search capabilities for real-time information
 - **chrome-devtools**: Browser automation for web scraping
 
-### Assistant Persona:
+### MCP Browser Requirements
+
+The chrome-devtools MCP server requires access to a browser executable. On Linux, first find the location of your Chromium installation:
+
+```bash
+which chromium
+```
+
+Then create the required symlink (adjust the path if `which chromium` shows a different location):
+
+```bash
+sudo mkdir -p /opt/google/chrome
+sudo ln -s /usr/bin/chromium /opt/google/chrome/chrome
+```
+
+### Assistant Persona
+
 The bot uses a "professional personal assistant" persona that:
+
 - Addresses users as "Sir" (configurable)
 - Maintains a polished, solution-first approach
 - Provides dry, witty responses when appropriate
 - Prioritizes privacy and safety
 
-### Customization:
+### Customization
+
 To customize the assistant, edit `opencode-assistant/.opencode/prompts/assistant.txt`.
 
 ## Environment Configuration
@@ -106,6 +125,7 @@ The bootstrap script manages both the opencode server and Discord bot:
 ```
 
 The bootstrap script:
+
 - Starts the opencode server (port 4096)
 - Starts the Discord bot once opencode is ready
 - Tracks PIDs for graceful shutdown
@@ -117,12 +137,14 @@ The bootstrap script:
 If you prefer to manage processes manually:
 
 **Terminal 1 - Start opencode server:**
+
 ```bash
 cd opencode-assistant
 opencode serve
 ```
 
 **Terminal 2 - Start Discord bot:**
+
 ```bash
 bun run start
 ```
@@ -136,6 +158,7 @@ bun test
 ## Architecture
 
 ### Project Structure
+
 ```
 botan-ebi/
 ├── opencode-assistant/    # Bundled opencode server configuration
@@ -165,12 +188,12 @@ botan-ebi/
 - **RetryWithBackoff**: Exponential backoff for resilient API calls
 
 ### Message Flow
+
 1. Discord message → DiscordInputAdapter → Incoming Queue
 2. Kernel picks message → OpencodeAgent processes → Outgoing Queue
 3. Output Adapter picks response → Discord channel
 
 ### Persistence
+
 - **Sessions**: `.botan-ebi/sessions.json` - Maps Discord channels to opencode sessions
 - **Queues**: `.botan-ebi/queues/` - Pending/processing/done message queues
-- **PIDs**: `.botan-ebi/pids.json` - Process tracking for graceful shutdown
-- **Logs**: `logs/` - opencode and bot logs
