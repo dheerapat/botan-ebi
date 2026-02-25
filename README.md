@@ -13,7 +13,7 @@ A Discord bot powered by the opencode AI agent.
 
 ## Installation
 
-The opencode server is now bundled with the bot in the `opencode-assistant` directory.
+The opencode server configuration is bundled with the project in the `opencode-assistant` directory.
 
 ```bash
 # Clone the repository
