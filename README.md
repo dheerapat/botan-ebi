@@ -49,17 +49,14 @@ The opencode server is configured in `opencode-assistant/.opencode/opencode.json
 
 ### MCP Browser Requirements
 
-The chrome-devtools MCP server requires access to a browser executable. On Linux, first find the location of your Chromium installation:
+The chrome-devtools MCP server requires a browser instance running with remote debugging enabled. Start your browser with the remote debugging port:
 
 ```bash
-which chromium
-```
+# For Brave:
+brave --remote-debugging-port=9222
 
-Then create the required symlink (adjust the path if `which chromium` shows a different location):
-
-```bash
-sudo mkdir -p /opt/google/chrome
-sudo ln -s /usr/bin/chromium /opt/google/chrome/chrome
+# For Chromium:
+chromium --remote-debugging-port=9222
 ```
 
 ### Assistant Persona
