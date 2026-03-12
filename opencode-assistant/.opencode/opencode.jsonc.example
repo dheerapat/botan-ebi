@@ -8,7 +8,7 @@
         "question": false,
       },
       "temperature": 0.1,
-      "steps": 10,
+      "steps": 20,
       "description": "General-purpose assistant",
     },
   },
