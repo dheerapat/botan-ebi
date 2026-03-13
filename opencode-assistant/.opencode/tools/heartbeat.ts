@@ -26,9 +26,7 @@ Use the bash tool to determine the current unix epoch if needed (e.g. \`date +%s
       ),
     type: tool.schema
       .enum(["r", "o"])
-      .describe(
-        'Heartbeat type: "r" for repeated, "o" for one-time',
-      ),
+      .describe('Heartbeat type: "r" for repeated, "o" for one-time'),
     interval: tool.schema
       .string()
       .optional()
@@ -45,12 +43,6 @@ Use the bash tool to determine the current unix epoch if needed (e.g. \`date +%s
       .describe(
         "Full context message that will be sent back to you when the heartbeat fires. Write a detailed prompt so you can craft a natural reminder when you receive it. Include what the user asked for and any relevant context.",
       ),
-    channelId: tool.schema
-      .string()
-      .describe("Discord channel ID to send the reminder to"),
-    userId: tool.schema
-      .string()
-      .describe("Discord user ID of the person who requested the reminder"),
   },
   async execute(args, context) {
     // Validate interval for repeated heartbeats
@@ -92,13 +84,15 @@ Use the bash tool to determine the current unix epoch if needed (e.g. \`date +%s
       interval: args.interval || null,
       slug: args.slug,
       message: args.message,
-      channelId: args.channelId,
-      userId: args.userId,
       createdAt: Math.floor(Date.now() / 1000),
     };
 
     // Write to heartbeat directory
-    const heartbeatDir = path.join(context.worktree, "heartbeat");
+    const heartbeatDir = path.join(
+      context.worktree,
+      "opencode-assistant",
+      "heartbeat",
+    );
     await fs.mkdir(heartbeatDir, { recursive: true });
 
     const filePath = path.join(heartbeatDir, filename);
@@ -106,14 +100,13 @@ Use the bash tool to determine the current unix epoch if needed (e.g. \`date +%s
 
     // Build confirmation
     const fireDate = new Date(args.epochSeconds * 1000);
-    const typeLabel = args.type === "r" ? `repeated every ${args.interval}` : "one-time";
+    const typeLabel =
+      args.type === "r" ? `repeated every ${args.interval}` : "one-time";
 
     return `Heartbeat created successfully.
 - File: ${filename}
 - Fires at: ${fireDate.toISOString()}
 - Type: ${typeLabel}
-- Slug: ${args.slug}
-- Channel: ${args.channelId}
-- User: ${args.userId}`;
+- Slug: ${args.slug}`;
   },
 });

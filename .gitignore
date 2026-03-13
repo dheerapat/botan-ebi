@@ -32,6 +32,7 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 # Session persistence
 .botan-ebi/sessions.json
 .botan-ebi/sessions.json.tmp
+.botan-ebi/last-channel.json
 .botan-ebi/queues/*
 
 # Process tracking
@@ -40,9 +41,10 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 .botan-ebi/bot.pid
 
 # Opencode assistant
-opencode-assistant/node_modules
+opencode-assistant/node_modules/*
 opencode-assistant/.opencode/memory.jsonl
 opencode-assistant/.opencode/opencode.jsonc
+opencode-assistant/heartbeat/*
 
 .bot.log
 .bot.pid

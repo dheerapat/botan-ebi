@@ -7,8 +7,6 @@ export interface HeartbeatData {
   interval: string | null;
   slug: string;
   message: string;
-  channelId: string;
-  userId: string;
   createdAt: number;
 }
 

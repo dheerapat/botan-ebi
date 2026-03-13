@@ -44,8 +44,6 @@ describe("HeartbeatMonitor", () => {
       interval: null,
       slug: "test-heartbeat",
       message: "This is a test heartbeat reminder.",
-      channelId: "channel-123",
-      userId: "user-456",
       createdAt: Math.floor(Date.now() / 1000) - 3600,
       ...overrides,
     };
@@ -153,8 +151,7 @@ describe("HeartbeatMonitor", () => {
 
       expect(firedHeartbeats.length).toBe(1);
       expect(firedHeartbeats[0]!.slug).toBe("test-heartbeat");
-      expect(firedHeartbeats[0]!.channelId).toBe("channel-123");
-      expect(firedHeartbeats[0]!.userId).toBe("user-456");
+      expect(firedHeartbeats[0]!.message).toBe("This is a test heartbeat reminder.");
 
       // File should be in archive
       const archiveFiles = await fs.readdir(archiveDir);
@@ -299,12 +296,10 @@ describe("HeartbeatMonitor", () => {
       const data1 = makeHeartbeatData({
         epochSeconds: pastEpoch,
         slug: "task-one",
-        channelId: "ch-1",
       });
       const data2 = makeHeartbeatData({
         epochSeconds: pastEpoch - 10,
         slug: "task-two",
-        channelId: "ch-2",
       });
 
       await createHeartbeatFile(
