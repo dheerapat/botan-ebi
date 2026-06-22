@@ -1,37 +1,32 @@
 # Migration: Opencode → Pi
 
 **Project:** Botan-ebi — Discord bot powered by an AI agent harness
-**Current:** Opencode (`@opencode-ai/sdk` + `opencode serve`)
-**Target:** Pi (`@earendil-works/pi-coding-agent`)
-**Status:** Draft
+**Status:** Complete (Phase 1)
 
 ---
 
 ## Table of Contents
 
 1. [Why Migrate](#1-why-migrate)
-2. [Current Architecture](#2-current-architecture)
-3. [Target Architecture](#3-target-architecture)
-4. [Pi Integration Options](#4-pi-integration-options)
-5. [Migration Steps](#5-migration-steps)
-6. [File Changes Summary](#6-file-changes-summary)
-7. [Deferred / Optional](#7-deferred--optional)
-8. [Rollback Plan](#8-rollback-plan)
+2. [Previous Architecture](#2-previous-architecture)
+3. [Current Architecture](#3-current-architecture)
+4. [Migration Steps Completed](#4-migration-steps-completed)
+5. [File Changes Summary](#5-file-changes-summary)
+6. [Next Phase: Jarvis-like Assistant](#6-next-phase-jarvis-like-assistant)
 
 ---
 
 ## 1. Why Migrate
 
-- **Replace two processes** (opencode server + bot) with **one** (bot spawns pi as subprocess or uses SDK in-process)
-- **Eliminate `opencode-assistant/` bundle** — no more opencode config, MCP server config, prompts living in the project
+- **Replace two processes** (opencode server + bot) with **one** (bot spawns pi as subprocess)
+- **Eliminate `opencode-assistant/` bundle** — no more opencode config, MCP server config, prompts in the project
 - **Pi has richer event streaming** — message deltas, thinking output, tool execution events out of the box
 - **Pi manages sessions** — no manual session create/delete/persist cycle
 - **Pi handles auth** — API keys via `auth.json` or env vars, no per-provider config needed in the project
-- **Pi is the team's standard** — consistent with other tooling
 
 ---
 
-## 2. Current Architecture
+## 2. Previous Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -73,308 +68,293 @@ Discord DM
 
 ### Key dependency: `@opencode-ai/sdk`
 
-The `OpencodeAgent` uses three SDK calls:
-
 | SDK call | Purpose |
 |----------|---------|
-| `client.session.create({ body: { title } })` | Create session per Discord channel |
-| `client.session.prompt({ path: { id }, body: { parts } })` | Send message, get response |
-| `client.session.delete({ path: { id } })` | Reset session on `/reset` command |
-
-Each call is wrapped in `retryWithBackoff` (exponential backoff, 3 attempts).
+| `client.session.create()` | Create session per Discord channel |
+| `client.session.prompt()` | Send message, get response |
+| `client.session.delete()` | Reset session on `/reset` command |
 
 ---
 
-## 3. Target Architecture
-
-### Option A: RPC Subprocess
+## 3. Current Architecture
 
 ```
-┌──────────────────────────────────────┐
-│            botan-ebi (bun)           │
-│                                      │
-│  Kernel                              │
-│  ├─ DiscordInputAdapter              │
-│  ├─ DiscordOutputAdapter             │
-│  ├─ PiRpcAgent ◄── stdin/stdout ──► pi --mode rpc   │
-│  ├─ QueueManager (keep or remove)    │
-│  ├─ SessionManager (simplified)      │
-│  └─ HeartbeatMonitor (keep or cron)  │
-└──────────────────────────────────────┘
+┌──────────────────────────────────────────────────┐
+│                botan-ebi (bun)                    │
+│                                                   │
+│  Kernel                                           │
+│  ├─ DiscordInputAdapter (rate-limited, validated) │
+│  ├─ DiscordOutputAdapter (message splitter)       │
+│  ├─ PiRpcAgent ◄── stdin/stdout ──► pi --mode rpc│
+│  │   └─ manages channel→session map in-memory     │
+│  ├─ QueueManager (file-based persistent queues)   │
+│  ├─ HeartbeatMonitor (.botan-ebi/heartbeat/)      │
+│  └─ ChannelContext (last-channel tracking)        │
+└──────────────────────────────────────────────────┘
 ```
 
-### Option B: In-process SDK
+### Message flow (current)
 
 ```
-┌──────────────────────────────────────────────┐
-│              botan-ebi (bun)                  │
-│                                               │
-│  Kernel                                       │
-│  ├─ DiscordInputAdapter                       │
-│  ├─ DiscordOutputAdapter                      │
-│  ├─ PiSdkAgent ─── createAgentSession() ──►   │
-│  │                   @earendil-works/         │
-│  │                   pi-coding-agent          │
-│  ├─ QueueManager (keep or remove)             │
-│  ├─ SessionManager (simplified)               │
-│  └─ HeartbeatMonitor (keep or cron)           │
-└──────────────────────────────────────────────┘
+Discord DM
+  → DiscordInputAdapter (rate-limited, validated)
+  → QueueManager.enqueue("incoming", packet)
+  → Kernel.startIncomingLoop()
+    → PiRpcAgent.process(message)
+      → [if known session] switch_session → prompt
+      → [if new channel] prompt → get_state → store session path
+      → collect text_delta events until agent_end
+  → QueueManager.enqueue("outgoing", response)
+  → Kernel.startOutgoingLoop()
+    → DiscordOutputAdapter.send(response)
 ```
+
+### Current state details
+
+| Component | What it does |
+|-----------|-------------|
+| `PiRpcAgent` | Spawns `pi --mode rpc` as subprocess, JSONL protocol, auto-restart on crash |
+| `channelSessions` | In-memory `Map<channelId, sessionFile>` — no disk persistence |
+| `SessionManager` | **Deleted** — absorbed into PiRpcAgent |
+| `QueueManager` | File-based queues (unchanged) |
+| `HeartbeatMonitor` | Moved from `opencode-assistant/heartbeat/` to `.botan-ebi/heartbeat/` |
 
 ---
 
-## 4. Pi Integration Options
-
-### Option A: RPC mode (recommended for this migration)
-
-**How it works:**
-```typescript
-const proc = spawn("pi", ["--mode", "rpc", "--no-session"]);
-// Send JSONL commands to stdin
-// Read JSONL events from stdout
-```
-
-**Commands we'd use:**
-| Current SDK call | Pi RPC equivalent |
-|---|---|
-| `client.session.create()` | `{"type":"new_session"}` (or `{"type":"switch_session","sessionPath":"..."}` to resume) |
-| `client.session.prompt()` | `{"type":"prompt","message":"..."}` |
-| `client.session.delete()` | `{"type":"new_session"}` (resets implicitly) |
-| — | `{"type":"abort"}` to cancel |
-| — | Streaming events for real-time output |
-
-**Pi manages sessions natively** — each Discord channel maps to a Pi session file (e.g., `discord-<channelId>.jsonl`). The bot uses `switch_session` to load the right one.
-
-**Pros:**
-- Process isolation (pi crash doesn't crash the bot)
-- Clean replacement for the opencode subprocess model
-- No bundling pi's SDK into the bot's dependency tree
-- Can restart pi independently if needed
-
-**Cons:**
-- JSONL framing needs careful implementation (custom line reader, not Node `readline`)
-- Two processes instead of one
-- Need to handle subprocess lifecycle (restart on crash, etc.)
-
-### Option B: In-process SDK
-
-**How it works:**
-```typescript
-import { createAgentSession, SessionManager } from "@earendil-works/pi-coding-agent";
-
-const { session } = await createAgentSession({
-  sessionManager: SessionManager.inMemory(),
-  tools: ["read", "bash", "edit", "write"],
-});
-
-session.subscribe((event) => {
-  if (event.type === "message_update" && event.assistantMessageEvent.type === "text_delta") {
-    // accumulate response
-  }
-});
-
-await session.prompt(message);
-```
-
-**Pros:**
-- Single process, no IPC overhead
-- Type-safe, full access to Pi API
-- Simpler error handling (no subprocess management)
-
-**Cons:**
-- Heavier dependency in `package.json`
-- Pi's dependency tree is large (brings in agent-core, AI clients, etc.)
-- Harder to restart independently if something goes wrong
-
-### Recommendation
-
-**Start with RPC mode.** It's the closer mental model to the current opencode setup (external process ↔ bot), easier to test in isolation, and avoids adding a large SDK dependency to the bot. The RPC client implementation is straightforward.
-
----
-
-## 5. Migration Steps
+## 4. Migration Steps Completed
 
 ### Step 1: Create `PiRpcAgent` adapter
+**`src/adapters/agents/pi/rpc-agent.ts`** — New file.
 
-**New file:** `src/adapters/agents/pi/rpc-agent.ts`
+Spawns `pi --mode rpc` as a child process:
+- JSONL framing with custom line reader (split on `\n`, strip `\r`)
+- Maps Discord channel → Pi session file path in-memory
+- `/reset` → sends `new_session` command
+- Normal messages → `switch_session` (if known) → `prompt` → collect text_delta events until `agent_end`
+- Auto-restart on subprocess exit/crash
+- Error fallback: returns friendly error messages to Discord
 
-Replaces `OpencodeAgent`. Implements the same `IAgentAdapter` interface.
+### Step 2: Delete `SessionManager`
+**`src/adapters/agents/opencode/session-manager.ts`** — Deleted.
 
-**Responsibilities:**
-- Spawn `pi --mode rpc` as a subprocess (or connect to an existing one)
-- Implement JSONL protocol: framed reads from stdout, writes to stdin
-- Map `process(message)` → send `prompt` command, collect response from events
-- Map `/reset` → send `new_session` command
-- Map `channelId` → Pi session name (e.g., `discord-<channelId>`)
-- Handle subprocess lifecycle: spawn on `start()`, kill on `stop()`, restart on crash
+Channel→session mapping is managed inside `PiRpcAgent` as a simple `Map<channelId, sessionFile>`. Pi handles session persistence on disk automatically.
 
-**Key implementation details:**
-- Use raw ` spawn` from `child_process` with `stdio: ["pipe", "pipe", "inherit"]`
-- Implement a proper JSONL reader (split on `\n`, strip `\r`, *not* Node `readline`)
-- Track `channelId → sessionPath` mapping (replaces current `SessionManager`)
-- On `process()`: if no session for channel, do nothing special (Pi creates one implicitly on first prompt). Or use `switch_session` to resume.
-- Parse streaming events to build the final response text
+### Step 3: Delete `OpencodeAgent`
+**`src/adapters/agents/opencode/opencode.ts`** — Deleted.
 
-**Dependencies added:** None (uses Node built-in `child_process`)
-
-### Step 2: Simplify `SessionManager`
-
-**Edit:** `src/adapters/agents/opencode/session-manager.ts`
-
-**Before:** Maps `channelId → opencode sessionId`, persists to `sessions.json`, creates/deletes via API.
-
-**After:** Maps `channelId → pi session file path`. Pi stores sessions on disk automatically. The bot only needs to remember which session file belongs to which channel.
-
-This could become much simpler:
-
-```typescript
-// SessionManager becomes a thin map channelId → sessionPath
-// Pi handles session persistence internally
-// On new_session, we just unlink the old session path
-```
-
-**Alternative:** The PiRpcAgent can manage this internally without a separate SessionManager class.
-
-### Step 3: Remove `@opencode-ai/sdk` dependency
-
-**Edit:** `package.json`
-
-Remove:
-```json
-"@opencode-ai/sdk": "^1.3.0"
-```
-
-No replacement dependency if using RPC mode. If using SDK mode, add:
-```json
-"@earendil-works/pi-coding-agent": "..."
-```
+Replaced entirely by `PiRpcAgent`.
 
 ### Step 4: Update environment config
+**`src/config/env.ts`** and **`.env.example`** — Edited.
 
-**Edit:** `src/config/env.ts` and `.env.example`
-
-Changes:
-- Remove `OPENCODE_BASE_URL`, `OPENCODE_PROVIDER_ID`, `OPENCODE_MODEL_ID`
-- Add `PI_PROVIDER` and `PI_MODEL` (optional overrides for `pi --mode rpc --provider ... --model ...`)
-- Pi reads API keys from env vars (`ANTHROPIC_API_KEY`, etc.) or `~/.pi/agent/auth.json`
+- Removed `OPENCODE_BASE_URL`, `OPENCODE_PROVIDER_ID`, `OPENCODE_MODEL_ID`
+- Added `PI_PROVIDER`, `PI_MODEL`, `PI_SESSION_DIR` (all optional)
+- Only `DISCORD_TOKEN` is now required
 
 ### Step 5: Update `bootstrap.sh`
+**`bootstrap.sh`** — Rewritten.
 
-**Edit:** `bootstrap.sh`
-
-- Remove opencode server management (`start_opencode`, `stop_opencode`, related vars)
-- The bot is now the only managed process
-- Pi is either a subprocess (managed by the bot itself) or used via SDK (no separate process)
-- Rename PID file from `.bot.pid` to something appropriate
-- Consider: if using RPC, pi is spawned by the bot, so the bot process is the only thing to manage
+- Removed all opencode server management (`start_opencode`, `stop_opencode`)
+- Bot is now the only managed process
+- Pi subprocess lifecycle managed by the bot itself
 
 ### Step 6: Update `Kernel`
+**`src/kernel/kernel.ts`** — Edited.
 
-**Edit:** `src/kernel/kernel.ts`
-
-Minimal changes:
-- The `PiRpcAgent` replaces `OpencodeAgent` in `src/index.ts`, kernel doesn't care
-- `HeartbeatMonitor` stays as-is (it's channel-context routing, independent of the agent)
-- `QueueManager` stays as-is unless we decide to simplify (see [deferred](#7-deferred--optional))
+- Changed heartbeat directory from `opencode-assistant/heartbeat` to `.botan-ebi/heartbeat`
 
 ### Step 7: Update entry point
-
-**Edit:** `src/index.ts`
+**`src/index.ts`** — Edited.
 
 ```typescript
 // Before:
 import OpencodeAgent from "+adapters/agents/opencode/opencode.js";
 const opencodeAgent = new OpencodeAgent();
 
-// After (RPC):
+// After:
 import PiRpcAgent from "+adapters/agents/pi/rpc-agent.js";
 const piAgent = new PiRpcAgent({
   provider: env.PI_PROVIDER,
   model: env.PI_MODEL,
   sessionDir: env.PI_SESSION_DIR,
 });
-
-// After (SDK):
-import PiSdkAgent from "+adapters/agents/pi/sdk-agent.js";
-const piAgent = new PiSdkAgent({
-  provider: env.PI_PROVIDER,
-  model: env.PI_MODEL,
-});
 ```
 
 ### Step 8: Update `.gitignore` and clean up
-
-- Remove `opencode-assistant/` from the project (or keep as reference but stop bundling it)
-- Pi's session files go in `.pi/sessions/` — add to `.gitignore` if not already
-- Update `README.md` with new setup instructions
+- Removed opencode entries (opencode-assistant/, .opencode.log, .opencode.pid)
+- Added `.pi/sessions/*` for pi session storage
+- `.botan-ebi/heartbeat/*` for migrated heartbeat files
+- Deleted `opencode-assistant/` directory
 
 ### Step 9: Update tests
-
-**Edit:** `tests/opencode.test.ts` → `tests/pi-agent.test.ts`
-
-Rewrite tests to cover:
-- PiRpcAgent subprocess lifecycle (spawn, kill, restart)
-- Message processing (send prompt, collect response from events)
-- Session mapping (channelId → session path)
-- Reset command (`/reset` → `new_session`)
-- Error handling (pi process crash, timeout, invalid response)
+- `tests/opencode.test.ts` → **Deleted**, replaced by `tests/pi-agent.test.ts`
+- `tests/session-manager.test.ts` → **Deleted** (no longer applicable)
+- `tests/pi-agent.test.ts` → 6 tests covering initialization, reset commands, error handling
 
 ---
 
-## 6. File Changes Summary
+## 5. File Changes Summary
 
-### RPC mode
-
-| File | Action | Reason |
-|------|--------|--------|
-| `src/adapters/agents/pi/rpc-agent.ts` | **Create** | New Pi RPC agent adapter |
-| `src/adapters/agents/opencode/session-manager.ts` | **Rewrite** | Simplify — channel→sessionPath map only |
-| `src/adapters/agents/opencode/opencode.ts` | **Delete** | Replaced by rpc-agent.ts |
-| `src/config/env.ts` | **Edit** | Replace opencode env vars with pi env vars |
-| `.env.example` | **Edit** | Same |
-| `src/index.ts` | **Edit** | Wire up PiRpcAgent instead of OpencodeAgent |
-| `package.json` | **Edit** | Remove `@opencode-ai/sdk` |
-| `bootstrap.sh` | **Edit** | Remove opencode server management |
-| `tests/opencode.test.ts` | **Rename + rewrite** | → `tests/pi-agent.test.ts` |
-| `opencode-assistant/` | **Remove or archive** | No longer needed |
-| `README.md` | **Edit** | Update setup/run instructions |
-
-### Additional for SDK mode
-
-| File | Action | Reason |
-|------|--------|--------|
-| `package.json` | **Add dep** | `@earendil-works/pi-coding-agent` |
-| `src/adapters/agents/pi/sdk-agent.ts` | **Create** | SDK-based agent adapter |
+| File | Action |
+|------|--------|
+| `src/adapters/agents/pi/rpc-agent.ts` | **Create** |
+| `src/adapters/agents/opencode/opencode.ts` | **Delete** |
+| `src/adapters/agents/opencode/session-manager.ts` | **Delete** |
+| `src/config/env.ts` | **Edit** |
+| `src/index.ts` | **Edit** |
+| `package.json` | **Edit** (remove @opencode-ai/sdk) |
+| `bootstrap.sh` | **Rewrite** |
+| `.env.example` | **Edit** |
+| `src/kernel/kernel.ts` | **Edit** (heartbeat path) |
+| `.gitignore` | **Edit** |
+| `README.md` | **Edit** |
+| `tests/pi-agent.test.ts` | **Create** |
+| `tests/opencode.test.ts` | **Delete** |
+| `tests/session-manager.test.ts` | **Delete** |
+| `opencode-assistant/` | **Delete** |
 
 ---
 
-## 7. Deferred / Optional
+## 6. Next Phase: Jarvis-like Assistant
 
-These are things we could simplify during migration but aren't required for the first cut:
+The bot currently runs pi as-is — a coding agent with full `read`/`bash`/`edit`/`write` tools and a coding-focused system prompt. To turn it into a general-purpose assistant, we customize pi, not replace it. Pi is the engine that gives us tool execution, session management, retry logic, model switching, and auth handling for free.
 
-### File-based queue (`QueueManager`)
-The file-based queue was useful for crash recovery when talking to opencode over HTTP. With Pi's streaming RPC, the bot could simplify to in-memory queues. **Keep for now** — removing it is a separate cleanup.
+### Plan: Customize Pi (the right approach)
 
-### HeartbeatMonitor
-Pi has no built-in cron/heartbeat. The custom `HeartbeatMonitor` (filesystem-watch based) works independently of the agent adapter. **Keep as-is** — it's decoupled from opencode.
+**Goal:** A conversational Jarvis-like assistant that can optionally use tools (web search, weather, reminders, home automation) — all routed through pi's agentic engine.
 
-### MCP servers
-Current opencode config includes `graph-memory`, `brave-search`, and `chrome-devtools` MCP servers. Pi supports MCP servers as well via `~/.pi/agent/settings.json` or project `.pi/settings.json`. **Defer** — migrate MCP config separately after the core migration.
+**Architecture stays:**
+```
+┌──────────────────────────────────────────────────┐
+│                botan-ebi (bun)                    │
+│                                                   │
+│  Kernel                                           │
+│  ├─ DiscordInputAdapter                           │
+│  ├─ DiscordOutputAdapter                          │
+│  ├─ PiRpcAgent ◄── stdin/stdout ──► pi --mode rpc│
+│  │   (now with custom system prompt + tool filter)│
+│  ├─ QueueManager (keep for crash resilience)      │
+│  ├─ HeartbeatMonitor                              │
+│  └─ ChannelContext                                 │
+└──────────────────────────────────────────────────┘
+```
 
-### Pi skills and extensions
-Pi supports skills (`.pi/skills/`) and extensions (`.pi/extensions/`). The current assistant prompt lives in `opencode-assistant/.opencode/prompts/assistant.txt`. This can be migrated to a Pi skill. **Defer** — not required for the initial swap.
+### Step 1: Custom system prompt
 
----
+**File:** `assistant-prompt.md` (project root)
 
-## 8. Rollback Plan
+Write a Jarvis-like system prompt that replaces pi's default coding prompt. Define the assistant's personality, tone, and capabilities. Examples:
+- Formal but warm (addresses user as "Sir", dry wit)
+- Proactive and solution-oriented
+- Privacy-conscious
+- No coding bias unless explicitly asked
 
-If the migration causes issues:
+**Changes to `PiRpcAgent`:**
+- Pass `--system-prompt "$(cat assistant-prompt.md)"` to the pi subprocess
+- Or: pass `--append-system-prompt "Your core personality rules:" + file` to keep pi's capabilities but override behavior
 
-1. **Keep `opencode-assistant/` directory** in place (don't delete it during migration)
-2. **Keep `@opencode-ai/sdk` in package.json** during development (remove only after confirming Pi works)
-3. **Feature flag** in `src/index.ts`:
-   ```typescript
-   const usePi = process.env.USE_PI === "true";
-   const agent = usePi ? new PiRpcAgent() : new OpencodeAgent();
-   ```
-4. **Restore `bootstrap.sh`** from git if needed
+### Step 2: Control tool access
+
+Pi's built-in tools (`read`, `bash`, `edit`, `write`) are coding-focused. For a general assistant we likely want:
+- **`read`** — Useful for reading files, configs, etc.
+- **`bash`** — Powerful, enables shell commands, scripting, web requests via curl
+- **No `edit`/`write`** — File editing is a coding task, not needed for a conversational assistant
+- **No `ask_advisor`** — That's a coding-specific meta-tool
+
+**Changes to `PiRpcAgent`:**
+- Pass `--tools read,bash` to limit pi to only these tools
+- Future: add custom tools (web search, weather, home automation) via pi extensions
+
+### Step 3: Add custom tools as pi extensions
+
+Pi supports extensions (`.pi/extensions/`) that register custom tools. These are TypeScript files that hook into pi's tool system. For a Jarvis assistant, useful tools:
+
+| Tool | What it does | How |
+|------|-------------|-----|
+| **Web search** | Search the web via Brave API | Pi extension: `registerTool('web_search', ...)` |
+| **Weather** | Get weather for a location | Pi extension or simple bash + `curl wttr.in` |
+| **Reminders** | Set timed reminders | Uses existing HeartbeatMonitor + custom tool |
+| **Home control** | Smart home automation | Pi extension calling Home Assistant / MQTT |
+
+**How to add:**
+1. Create extension file in `.pi/extensions/jarvis-tools.ts`
+2. Register tools using `pi.registerTool()`
+3. The extension is loaded automatically by pi when present
+
+### Step 4: Implement the changes in PiRpcAgent
+
+**Edit:** `src/adapters/agents/pi/rpc-agent.ts`
+
+Add three new config options:
+```typescript
+export interface PiRpcAgentOptions {
+  provider?: string;
+  model?: string;
+  sessionDir?: string;
+  systemPrompt?: string;       // path to custom system prompt file
+  appendSystemPrompt?: string; // path to append to default prompt
+  tools?: string;              // comma-separated tool allowlist, e.g. "read,bash"
+  responseTimeoutMs?: number;
+}
+```
+
+In `spawn()`, append the flags:
+```typescript
+const args = ["--mode", "rpc", "--session-dir", this.opts.sessionDir];
+if (this.opts.systemPrompt) {
+  const prompt = await fs.readFile(this.opts.systemPrompt, "utf-8");
+  args.push("--system-prompt", prompt);
+}
+if (this.opts.tools) {
+  args.push("--tools", this.opts.tools);
+}
+```
+
+### Step 5: Add env vars
+
+**.env:**
+```
+PI_SYSTEM_PROMPT=./assistant-prompt.md
+PI_APPEND_SYSTEM_PROMPT=./jarvis-rules.md
+PI_TOOLS=read,bash
+```
+
+**`src/config/env.ts`:**
+```typescript
+export interface EnvConfig {
+  DISCORD_TOKEN: string;
+  PI_PROVIDER?: string;
+  PI_MODEL?: string;
+  PI_SESSION_DIR?: string;
+  PI_SYSTEM_PROMPT?: string;
+  PI_APPEND_SYSTEM_PROMPT?: string;
+  PI_TOOLS?: string;
+  // ...
+}
+```
+
+### Step 6: Move session files out of project dir
+
+Set `PI_SESSION_DIR` to something like `~/.local/share/botan-ebi/sessions` so pi's session files don't clutter the project:
+
+```
+PI_SESSION_DIR=/home/dheeto/.local/share/botan-ebi/sessions
+```
+
+### Implementation Order
+
+1. Add `systemPrompt`, `tools` options to `PiRpcAgent` and pass them to pi subprocess (trivial change)
+2. Write `assistant-prompt.md` with Jarvis personality (the fun part)
+3. Test — send a "hi" and verify tone is different
+4. Set `PI_SESSION_DIR` to a proper location
+5. Add pi extensions for web search, reminders, etc. as needed
+
+### Future tools (pi extensions)
+
+- **Web search:** `~/.pi/agent/extensions/web-search.ts` — wraps Brave Search API
+- **Reminders:** Use existing HeartbeatMonitor + a custom tool that writes heartbeat files
+- **Weather:** Simple bash tool — `curl wttr.in/{location}?format=%C+%t`
+- **Home automation:** Pi extension calling Home Assistant REST API
+- **Calendar:** Read/write iCal files via bash
+
+These can be added incrementally — each is a standalone pi extension, no bot code changes needed.

@@ -72,7 +72,7 @@ export class Kernel {
     // Start heartbeat monitor
     const heartbeatDir = path.join(
       process.cwd(),
-      "opencode-assistant",
+      ".botan-ebi",
       "heartbeat",
     );
     this.heartbeatMonitor = new HeartbeatMonitor(
