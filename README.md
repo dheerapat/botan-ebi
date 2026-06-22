@@ -1,19 +1,23 @@
 # Botan-ebi
 
-A Discord bot powered by the opencode AI agent.
+A Discord bot powered by the [pi coding agent](https://github.com/earendil-works/pi-coding-agent).
 
 > This project is heavily inspired by [tinyclaw](https://github.com/jlia0/tinyclaw)
 
 ## Features
 
 - Discord bot with direct message support
-- Per-channel AI conversations via opencode
-- Session persistence across restarts
+- Per-channel AI conversations via pi (session persistence managed by pi)
 - Reset commands: `/reset` or `!reset` to start a new session
+- Pi manages the LLM session — the bot spawns `pi --mode rpc` as a subprocess
+
+## Prerequisites
+
+- [Bun](https://bun.sh) >= 1.0
+- [pi](https://github.com/earendil-works/pi-coding-agent) installed globally
+- API key for your LLM provider (set in env or `~/.pi/agent/auth.json`)
 
 ## Installation
-
-The opencode server configuration is bundled with the project in the `opencode-assistant` directory.
 
 ```bash
 # Clone the repository
@@ -23,54 +27,10 @@ cd botan-ebi
 # Install dependencies
 bun install
 
-# Set up opencode configuration
-cd opencode-assistant
-cp .opencode/opencode.jsonc.example .opencode/opencode.jsonc
-./setup.sh
-cd ..
-```
-
-Create a `.env` file from the example and add your Discord token:
-
-```bash
+# Set up environment
 cp .env.example .env
 # Edit .env and add your DISCORD_TOKEN
 ```
-
-## Opencode Configuration
-
-The opencode server is configured in `opencode-assistant/.opencode/opencode.jsonc`.
-
-### MCP Servers Included
-
-- **graph-memory**: Persistent memory for user preferences and context
-- **brave-search**: Web search capabilities for real-time information
-- **chrome-devtools**: Browser automation for web scraping
-
-### MCP Browser Requirements
-
-The chrome-devtools MCP server requires a browser instance running with remote debugging enabled. Start your browser with the remote debugging port:
-
-```bash
-# For Brave:
-brave --remote-debugging-port=9222
-
-# For Chromium:
-chromium --remote-debugging-port=9222
-```
-
-### Assistant Persona
-
-The bot uses a "professional personal assistant" persona that:
-
-- Addresses users as "Sir" (configurable)
-- Maintains a polished, solution-first approach
-- Provides dry, witty responses when appropriate
-- Prioritizes privacy and safety
-
-### Customization
-
-To customize the assistant, edit `opencode-assistant/.opencode/prompts/assistant.txt`.
 
 ## Environment Configuration
 
@@ -80,21 +40,18 @@ Create a `.env` file with the following settings:
 # Discord Bot Token (required)
 DISCORD_TOKEN=your_discord_bot_token_here
 
-# Opencode Configuration
-OPENCODE_BASE_URL=http://localhost:4096
+# Pi reads API keys from env vars (ANTHROPIC_API_KEY, etc.) or ~/.pi/agent/auth.json
 
-# Optional: Override model
-# OPENCODE_PROVIDER_ID=zai-coding-plan
-# OPENCODE_MODEL_ID=glm-4.7
+# Optional: Override the provider and model
+# PI_PROVIDER=anthropic
+# PI_MODEL=claude-sonnet-4-20250514
+
+# Optional: Pi session storage directory (default: .pi/sessions)
+# PI_SESSION_DIR=.pi/sessions
 
 # Optional: Production settings
-# Maximum message length in characters (default: 10000)
 MAX_MESSAGE_LENGTH=10000
-
-# Maximum queue depth before backpressure kicks in (default: 50)
 MAX_QUEUE_DEPTH=50
-
-# Rate limit per channel per minute (default: 10)
 RATE_LIMIT_PER_MINUTE=10
 ```
 
@@ -102,10 +59,8 @@ RATE_LIMIT_PER_MINUTE=10
 
 ### Quick Start (Recommended)
 
-The bootstrap script manages both the opencode server and Discord bot:
-
 ```bash
-# Start both services
+# Start the bot (pi agent is managed as a subprocess)
 ./bootstrap.sh start
 
 # Check status
@@ -114,33 +69,14 @@ The bootstrap script manages both the opencode server and Discord bot:
 # View logs
 ./bootstrap.sh logs
 
-# Stop both services
+# Stop the bot
 ./bootstrap.sh stop
 
-# Restart both services
+# Restart
 ./bootstrap.sh restart
 ```
 
-The bootstrap script:
-
-- Starts the opencode server (port 4096)
-- Starts the Discord bot once opencode is ready
-- Tracks PIDs for graceful shutdown
-- Manages logs in the `logs/` directory
-- Performs health checks on startup
-
-### Manual Start (Advanced)
-
-If you prefer to manage processes manually:
-
-**Terminal 1 - Start opencode server:**
-
-```bash
-cd opencode-assistant
-opencode serve
-```
-
-**Terminal 2 - Start Discord bot:**
+### Manual Start
 
 ```bash
 bun run start
@@ -158,39 +94,47 @@ bun test
 
 ```
 botan-ebi/
-├── opencode-assistant/    # Bundled opencode server configuration
-│   ├── .opencode/         # Opencode config and prompts
-│   ├── setup.sh           # Initial setup script
-│   └── README.md
-├── src/                   # Bot source code
-│   ├── adapters/          # Discord and Opencode integrations
-│   ├── interfaces/        # Adapter contracts
-│   ├── kernel/            # Main orchestrator and queue system
-│   ├── utils/             # Rate limiting, retry, validation
-│   └── config/            # Environment validation
-├── logs/                  # Service logs (created on startup)
-├── .botan-ebi/            # Queue files and PID tracking
-├── bootstrap.sh           # Service management script
-└── package.json
+├── src/
+│   ├── adapters/
+│   │   ├── agents/
+│   │   │   └── pi/
+│   │   │       └── rpc-agent.ts    # Pi RPC subprocess adapter
+│   │   └── channels/
+│   │       ├── input/discord.ts
+│   │       └── output/discord.ts
+│   ├── interfaces/
+│   │   └── adapter.ts              # IAgentAdapter, IInputAdapter, IOutputAdapter
+│   ├── kernel/
+│   │   ├── kernel.ts               # Orchestrator: message loop between adapters
+│   │   ├── queue-manager.ts        # File-based persistent queue
+│   │   ├── heartbeat-monitor.ts    # Scheduled message system
+│   │   └── channel-context.ts      # Last channel tracker
+│   ├── config/
+│   │   └── env.ts                  # Environment validation
+│   ├── utils/
+│   │   ├── rate-limiter.ts
+│   │   ├── retry.ts
+│   │   ├── validation.ts
+│   │   └── discord-message-splitter.ts
+│   └── index.ts
+├── bootstrap.sh                    # Process manager (bot only)
+├── package.json
+└── tsconfig.json
 ```
 
 ### Components
 
 - **DiscordAdapter**: Handles Discord input and output with rate limiting
-- **OpencodeAgent**: Processes messages via the opencode API with session management
-- **Kernel**: Orchestrates message flow between adapters and agents
+- **PiRpcAgent**: Spawns `pi --mode rpc` as subprocess, communicates via JSONL
+- **Kernel**: Orchestrates message flow between adapters and agent
 - **QueueManager**: File-based persistent queue system for message durability
-- **SessionManager**: Manages per-channel session persistence across restarts
+- **HeartbeatMonitor**: Filesystem-watch based scheduled reminders
 - **RateLimiter**: Per-channel rate limiting to prevent abuse
-- **RetryWithBackoff**: Exponential backoff for resilient API calls
 
 ### Message Flow
 
 1. Discord message → DiscordInputAdapter → Incoming Queue
-2. Kernel picks message → OpencodeAgent processes → Outgoing Queue
+2. Kernel picks message → PiRpcAgent processes (via RPC subprocess) → Outgoing Queue
 3. Output Adapter picks response → Discord channel
 
-### Persistence
-
-- **Sessions**: `.botan-ebi/sessions.json` - Maps Discord channels to opencode sessions
-- **Queues**: `.botan-ebi/queues/` - Pending/processing/done message queues
+Pi manages LLM sessions natively. Each Discord channel maps to a Pi session file. Session persistence, retry logic, and model configuration are handled by pi — the bot only manages the subprocess lifecycle and channel-to-session routing.

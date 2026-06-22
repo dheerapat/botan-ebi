@@ -1,4 +1,4 @@
-import OpencodeAgent from "+adapters/agents/opencode/opencode.js";
+import PiRpcAgent from "+adapters/agents/pi/rpc-agent.js";
 import { DiscordInputAdapter } from "+adapters/channels/input/discord.js";
 import { DiscordOutputAdapter } from "+adapters/channels/output/discord.js";
 import { Kernel } from "+kernel/kernel.js";
@@ -28,18 +28,22 @@ const discordInputAdapter = new DiscordInputAdapter({
 const discordOutputAdapter = new DiscordOutputAdapter(
   discordInputAdapter.getClient(),
 );
-const opencodeAgent = new OpencodeAgent();
+const piAgent = new PiRpcAgent({
+  provider: env.PI_PROVIDER,
+  model: env.PI_MODEL,
+  sessionDir: env.PI_SESSION_DIR,
+});
 
 const kernel = new Kernel(
   [discordInputAdapter],
   [discordOutputAdapter],
-  [opencodeAgent],
+  [piAgent],
   env.MAX_QUEUE_DEPTH,
 );
 kernel.bootstrap(
   discordInputAdapter.name,
   discordOutputAdapter.name,
-  opencodeAgent.name,
+  piAgent.name,
 );
 
 process.on("SIGINT", () => kernel.shutdown());

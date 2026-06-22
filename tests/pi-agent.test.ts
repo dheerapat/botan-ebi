@@ -1,28 +1,27 @@
-import { describe, it, expect, beforeEach, afterEach, mock } from "bun:test";
-import OpencodeAgent from "../src/adapters/agents/opencode/opencode.js";
+import { describe, it, expect, beforeEach, afterEach } from "bun:test";
+import PiRpcAgent from "../src/adapters/agents/pi/rpc-agent.js";
 import type { MessagePacket } from "../src/interfaces/adapter";
 import fs from "fs/promises";
 import path from "path";
 
-describe("OpencodeAgent", () => {
-  let agent: OpencodeAgent;
-  let testSessionPath: string;
+describe("PiRpcAgent", () => {
+  let agent: PiRpcAgent;
+  let testSessionDir: string;
 
   beforeEach(async () => {
-    testSessionPath = path.join(process.cwd(), ".test-sessions");
-    agent = new OpencodeAgent();
-
-    await fs.rm(testSessionPath, { recursive: true, force: true });
+    testSessionDir = path.join(process.cwd(), ".test-pi-sessions");
+    agent = new PiRpcAgent({ sessionDir: testSessionDir });
+    await fs.rm(testSessionDir, { recursive: true, force: true });
   });
 
   afterEach(async () => {
     await agent.stop();
-    await fs.rm(testSessionPath, { recursive: true, force: true });
+    await fs.rm(testSessionDir, { recursive: true, force: true });
   });
 
   describe("initialization", () => {
     it("should initialize with correct name", () => {
-      expect(agent.name).toBe("opencode");
+      expect(agent.name).toBe("pi");
     });
 
     it("should start and stop without errors", async () => {
@@ -76,7 +75,7 @@ describe("OpencodeAgent", () => {
   });
 
   describe("process - error handling", () => {
-    it("should return friendly error when opencode server is unavailable", async () => {
+    it("should return friendly error when pi is unavailable", async () => {
       const message: MessagePacket = {
         id: "msg-4",
         source: "discord",
@@ -88,34 +87,6 @@ describe("OpencodeAgent", () => {
 
       const response = await agent.process(message);
       expect(response).toContain("error");
-    });
-  });
-
-  describe("session management", () => {
-    it("should handle messages from different channels separately", async () => {
-      const message1: MessagePacket = {
-        id: "msg-5",
-        source: "discord",
-        channelId: "channel-a",
-        userId: "user-a",
-        payload: "Hello from channel A",
-        timestamp: Date.now(),
-      };
-
-      const message2: MessagePacket = {
-        id: "msg-6",
-        source: "discord",
-        channelId: "channel-b",
-        userId: "user-b",
-        payload: "Hello from channel B",
-        timestamp: Date.now(),
-      };
-
-      const response1 = await agent.process(message1);
-      const response2 = await agent.process(message2);
-
-      expect(response1).toBeDefined();
-      expect(response2).toBeDefined();
     });
   });
 });

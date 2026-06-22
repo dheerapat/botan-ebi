@@ -6,6 +6,10 @@ import type {
   IAgentAdapter,
 } from "+interfaces/adapter";
 import { QueueManager } from "+kernel/queue-manager";
+import { HeartbeatMonitor } from "+kernel/heartbeat-monitor";
+import type { HeartbeatData } from "+kernel/heartbeat-monitor";
+import { ChannelContext } from "+kernel/channel-context";
+import path from "path";
 
 export class Kernel {
   private inputs: Map<string, IInputAdapter> = new Map();
@@ -13,6 +17,8 @@ export class Kernel {
   private agents: Map<string, IAgentAdapter> = new Map();
 
   private queue: QueueManager;
+  private heartbeatMonitor: HeartbeatMonitor | null = null;
+  private channelContext: ChannelContext = new ChannelContext();
   private isShuttingDown: boolean = false;
   private maxQueueDepth: number;
   private activeProcessingJobs: Set<string> = new Set();
@@ -60,6 +66,41 @@ export class Kernel {
     console.log("✅ Adapter Started");
     console.log("✅ Agent Loaded");
 
+    // Load persisted channel context (last known channelId/userId/source)
+    await this.channelContext.load();
+
+    // Start heartbeat monitor
+    const heartbeatDir = path.join(
+      process.cwd(),
+      ".botan-ebi",
+      "heartbeat",
+    );
+    this.heartbeatMonitor = new HeartbeatMonitor(
+      heartbeatDir,
+      async (heartbeat: HeartbeatData) => {
+        const ctx = this.channelContext.get();
+        if (!ctx) {
+          console.warn(
+            `Skipping heartbeat "${heartbeat.slug}" — no channel context available yet`,
+          );
+          return;
+        }
+
+        const msg: MessagePacket = {
+          id: `heartbeat-${heartbeat.slug}-${Date.now()}`,
+          source: ctx.source,
+          channelId: ctx.channelId,
+          userId: ctx.userId,
+          payload: heartbeat.message,
+          timestamp: Date.now(),
+          metadata: { heartbeat: true, slug: heartbeat.slug },
+        };
+        await this.handleIncomingMessage(msg);
+      },
+    );
+    await this.heartbeatMonitor.start();
+    console.log("✅ Heartbeat Monitor Started");
+
     this.startProcessingLoop(agentName);
   }
 
@@ -76,6 +117,11 @@ export class Kernel {
         `Rejecting message ${msg.id} - queue depth (${currentDepth}) exceeds limit (${this.maxQueueDepth})`,
       );
       return;
+    }
+
+    // Persist channel context from real (non-heartbeat) messages
+    if (!msg.metadata?.heartbeat) {
+      await this.channelContext.update(msg.channelId, msg.userId, msg.source);
     }
 
     await this.queue.enqueue("incoming", msg);
@@ -229,6 +275,11 @@ export class Kernel {
     for (const [name, adapter] of this.outputs) {
       console.log(`Stopping output adapter: ${name}`);
       await adapter.stop();
+    }
+
+    if (this.heartbeatMonitor) {
+      console.log("Stopping heartbeat monitor");
+      await this.heartbeatMonitor.stop();
     }
 
     for (const [name, agent] of this.agents) {
